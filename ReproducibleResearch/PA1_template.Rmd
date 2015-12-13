@@ -1,0 +1,119 @@
+---
+title: "Reproducible Research : Peer Assessment 1"
+author: "James"
+date: "December 13, 2015"
+output: html_document
+---
+
+First load some libraries :
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.height=5, fig.path="figures/")
+```
+
+```{r, warnings=FALSE, error=FALSE, message=FALSE}
+library(dplyr)
+````
+
+Loading and preprocessing
+--------
+
+First load the datafile and strip out the NAs.
+```{r}
+activity <- read.csv("~/activity.csv")
+cleaned <- activity[!is.na(activity[,"steps"]),]
+#summary(cleaned)
+```
+
+What is the mean number of steps taken per day?
+------
+```
+
+1. Calculate number of steps per day
+2. Print out a histogram
+3. Calculate and report the mean and median number of steps
+
+```{r}
+summary = group_by(cleaned, date) %>% summarise(sum(steps)) 
+gdata = as.numeric(summary[["sum(steps)"]])
+hist(gdata, breaks=20, main ="Steps per Day", xlab = "Steps per Day", ylab="Freq")
+```
+
+```{r echo = F}
+median = format(median(gdata), scientific = F)
+mean = format(mean(gdata), scientific = F)
+```
+
+The median number of steps per day is `r median` and the mean is `r mean`.
+
+What is the average daiy activity pattern?
+------
+
+1. Calculate the average for each interval across all the days.
+2. Find the interval with the maximum number of steps on average across all days.
+
+```{r}
+maxInterval = -1
+activity.pattern <- function(inputdata, title)
+{
+  summaryByInterval = group_by(inputdata, interval)  %>% summarise(mean(steps)) %>% arrange(interval)
+  plot(summaryByInterval, type="l", main = title, xlab = "Interval", ylab = "mean steps per interval", oma = c (1,1,1,1))
+  maxpos = which.max(summaryByInterval[["mean(steps)"]])
+  maxInterval <<- summaryByInterval[["interval"]][maxpos]
+}
+activity.pattern(cleaned, "Activity Pattern")
+```
+
+The interval with the largest number of steps on average is `r maxInterval`.
+
+Imputing Missing Values
+----
+
+1. Calculate and report the total number of missing values
+  There are `r sum(is.na(activity[,"steps"]))` missing data points.
+2. Use the mean average steps for the interval across all days as a default value.
+3. Fill in the NA data points with the default value.
+4. Plot the histogram and calculate the mean and median using the enriched value.
+
+```{r}
+defaults = group_by(cleaned, interval) %>% summarise(mean(steps))
+colnames(defaults)[2] = "default"
+enriched = merge(activity, defaults, by="interval") 
+enriched[,"imputed"] = ifelse(is.na(enriched$steps), enriched$default, enriched$steps)
+totalBefore = nrow(activity)
+totalAfterwards = nrow(enriched)
+summary(enriched[c("steps","imputed")])
+```
+
+There were `r totalBefore` rows before the enrichment and `r totalAfterwards` rows afterwards, so no rows have been lost.  As can be observed from the summary (above) there are no NAs in the "imputed" column.
+
+
+```{r}
+summary2 = group_by(enriched, date) %>% summarise(sum(imputed)) 
+gdata2 = as.numeric(summary2[["sum(imputed)"]])
+hist(gdata2, breaks=20, main ="Steps per Day (with missing data imputed)", xlab="steps")
+```
+
+```{r echo = F}
+median = format(median(gdata2), scientific = F)
+mean = format(mean(gdata2), scientific = F)
+sdByRemoving = as.integer(sd(gdata))
+sdByEnriching = as.integer(sd(gdata2))
+```
+
+The median number of steps per day is `r median` and the mean is `r mean`.  These figures are not materially different from those obtained by excluding the missing data. The main impact of enriching with the mean is that the data are less spread out.  This can be observed from the histograms; Furthermore note the standard deviation has dropped from `r sdByRemoving` steps to `r sdByEnriching` steps.
+
+Are there differences in the activity patterns between weekdays and weekends?
+-----
+
+1.  Enrich the data with a weekdays/weekend factor variable.
+2.  Display the activity patterns graph for both weekends and weekdays.
+
+```{r, results ="hold", fig.height=9}
+wkddays = as.POSIXlt(cleaned[,"date"])$wday
+cls = ifelse(wkddays < 1 | wkddays > 5, 1, 0)
+cleaned[,"classification"] = factor (cls, labels=c("weekday", "weekend"))
+par(mfrow=c(2,1))
+activity.pattern(filter(cleaned, classification == "weekday"), "Weekday")
+activity.pattern(filter(cleaned, classification == "weekend"), "Weekend")
+```
