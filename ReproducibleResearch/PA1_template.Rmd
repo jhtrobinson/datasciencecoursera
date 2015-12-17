@@ -7,46 +7,61 @@ output: html_document
 
 First load some libraries :
 
-```{r global_options, include=FALSE}
+```{r global_options, include=FALSE, echo=FALSE}
 knitr::opts_chunk$set(fig.height=5, fig.path="figures/")
 ```
 
 ```{r, warnings=FALSE, error=FALSE, message=FALSE}
 library(dplyr)
-````
+```
 
 Loading and preprocessing
 --------
 
 First load the datafile and strip out the NAs.
 ```{r}
-activity <- read.csv("~/activity.csv")
+activity <- read.csv("c:/Users/James/activity.csv")
 cleaned <- activity[!is.na(activity[,"steps"]),]
 #summary(cleaned)
 ```
 
 What is the mean number of steps taken per day?
 ------
-```
+
+Define a function to
 
 1. Calculate number of steps per day
-2. Print out a histogram
-3. Calculate and report the mean and median number of steps
+2. Display a histogram
+3. Calculate the mean, median and standard deviation of the number of steps
+
+Then call the function and report the mean and median.
 
 ```{r}
-summary = group_by(cleaned, date) %>% summarise(sum(steps)) 
-gdata = as.numeric(summary[["sum(steps)"]])
-hist(gdata, breaks=20, main ="Steps per Day", xlab = "Steps per Day", ylab="Freq")
-```
+median = 0.0
+mean = 0.0
+stddev = 0.0
+display.histogram = function (data, title)
+{
+  summary = group_by(data, date) %>% summarise(sum(Steps)) 
+  gdata = as.numeric(summary[["sum(Steps)"]])
+  hist(gdata, breaks=20,
+       main =paste("Steps per Day", title),
+       xlab = "Steps per Day",
+       ylab="Frequency")
+  
+  
+  median <<- as.integer(median(gdata))
+  mean <<- as.integer(mean(gdata))
+  stddev <<- as.integer(sd(gdata))
+}
 
-```{r echo = F}
-median = format(median(gdata), scientific = F)
-mean = format(mean(gdata), scientific = F)
+cleaned[,"Steps"] = cleaned[,"steps"]
+display.histogram(cleaned, "(with NAs removed)")
 ```
 
 The median number of steps per day is `r median` and the mean is `r mean`.
 
-What is the average daiy activity pattern?
+What is the average daily activity pattern?
 ------
 
 1. Calculate the average for each interval across all the days.
@@ -56,11 +71,15 @@ What is the average daiy activity pattern?
 maxInterval = -1
 activity.pattern <- function(inputdata, title)
 {
-  summaryByInterval = group_by(inputdata, interval)  %>% summarise(mean(steps)) %>% arrange(interval)
-  plot(summaryByInterval, type="l", main = title, xlab = "Interval", ylab = "mean steps per interval", oma = c (1,1,1,1))
-  maxpos = which.max(summaryByInterval[["mean(steps)"]])
+  summaryByInterval = group_by(inputdata, interval) %>% summarise(mean(Steps)) %>% arrange(interval)
+  plot(summaryByInterval, type="l",
+       main = title, xlab = "Interval",
+       ylab = "mean steps per interval",
+       oma = c (1,1,1,1))
+  maxpos = which.max(summaryByInterval[["mean(Steps)"]])
   maxInterval <<- summaryByInterval[["interval"]][maxpos]
 }
+cleaned[,"Steps"] = cleaned[,"steps"]
 activity.pattern(cleaned, "Activity Pattern")
 ```
 
@@ -89,16 +108,12 @@ There were `r totalBefore` rows before the enrichment and `r totalAfterwards` ro
 
 
 ```{r}
-summary2 = group_by(enriched, date) %>% summarise(sum(imputed)) 
-gdata2 = as.numeric(summary2[["sum(imputed)"]])
-hist(gdata2, breaks=20, main ="Steps per Day (with missing data imputed)", xlab="steps")
-```
+# take care to stash the std dev before so we can compare them below.
+sdByRemoving = stddev
 
-```{r echo = F}
-median = format(median(gdata2), scientific = F)
-mean = format(mean(gdata2), scientific = F)
-sdByRemoving = as.integer(sd(gdata))
-sdByEnriching = as.integer(sd(gdata2))
+enriched[,"Steps"] = enriched[,"imputed"]
+display.histogram(enriched, "(with imputed data)")
+sdByEnriching = stddev
 ```
 
 The median number of steps per day is `r median` and the mean is `r mean`.  These figures are not materially different from those obtained by excluding the missing data. The main impact of enriching with the mean is that the data are less spread out.  This can be observed from the histograms; Furthermore note the standard deviation has dropped from `r sdByRemoving` steps to `r sdByEnriching` steps.
@@ -109,11 +124,17 @@ Are there differences in the activity patterns between weekdays and weekends?
 1.  Enrich the data with a weekdays/weekend factor variable.
 2.  Display the activity patterns graph for both weekends and weekdays.
 
+Here a factor variable is added to the enriched data to indicate whether the observation date is on a weekend (ie a Saturday or a Sunday), or on a weekday.
+
+The enriched data is copied into the use steps column and the data is plotted using the same function defined above.
+
 ```{r, results ="hold", fig.height=9}
-wkddays = as.POSIXlt(cleaned[,"date"])$wday
+wkddays = as.POSIXlt(enriched[,"date"])$wday
 cls = ifelse(wkddays < 1 | wkddays > 5, 1, 0)
-cleaned[,"classification"] = factor (cls, labels=c("weekday", "weekend"))
+enriched[,"classification"] = factor (cls, labels=c("weekday", "weekend"))
+enriched[,"Steps"] = enriched[,"imputed"]
+
 par(mfrow=c(2,1))
-activity.pattern(filter(cleaned, classification == "weekday"), "Weekday")
-activity.pattern(filter(cleaned, classification == "weekend"), "Weekend")
+activity.pattern(filter(enriched, classification == "weekday"), "Weekday")
+activity.pattern(filter(enriched, classification == "weekend"), "Weekend")
 ```
