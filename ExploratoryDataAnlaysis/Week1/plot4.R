@@ -1,3 +1,4 @@
+library(dplyr)
 # 1. Load data
 electric <- read.csv("./data/household_power_consumption.txt", sep=";")
 
@@ -20,13 +21,11 @@ pts <- c(as.POSIXct("2007-02-01 00:00:00"),
          as.POSIXct("2007-02-02 00:00:00"),
          as.POSIXct("2007-02-03 00:00:00") )
 
-# 4. set up a 2x2 grid
+# 4.Set up dev and g2x2 grid
+png("plot4.png", width=480, height=480)
 par(mfrow=c(2,2))
 
 # 5. Plot 1
-
-png("plot4.png", width=480, height=480)
-
 plot(electric$time, electric$Global_active_power, type="l",
      xlab="", ylab="Global Active Power", xaxt="n")
 axis(1, labels = format(pts, "%a"), at=pts)

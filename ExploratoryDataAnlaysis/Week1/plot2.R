@@ -1,3 +1,4 @@
+library(dplyr)
 # 1. Load the data
 electric <- read.csv("./data/household_power_consumption.txt", sep=";")
 
