@@ -1,0 +1,170 @@
+---
+title: "Fitness Device Analysis"
+author: "James"
+date: "4 July 2024"
+output:
+html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+library(e1071)
+library(caret)
+library(randomForest)
+library(e1071)
+library(nnet)
+library(class)
+library(corrplot)
+library(dplyr)
+library(knitr)
+```
+
+# Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+# Data Loading and Cross Validation Approach
+The data is loaded, filtered and a holdout set created for cross validation which will be done with an 80:20 split. Care is taken not to allow individual windows to be represented
+in both the test and training sets in order to avoid data leakage.
+
+```{r data-processing, cache=TRUE}
+
+trainRaw <- read.csv("pml-training.csv", na.strings=c("NA", "", " "))
+testRaw <- read.csv("pml-testing.csv", na.strings=c("NA", "", " "))
+
+# filter out nas
+trainRaw <- trainRaw[, colSums(is.na(trainRaw))==0]
+testRaw <- testRaw[, colSums(is.na(testRaw))==0]
+
+trainRaw$classe <- as.factor(trainRaw$classe)
+
+set.seed(123)
+unique_windows <- unique(trainRaw$num_window)
+train_index <- createDataPartition(unique_windows, p=0.8, list=FALSE)
+
+train_windows <- unique_windows[train_index]
+test_windows <- unique_windows[-train_index]
+train_data <- trainRaw %>% filter(num_window %in% train_windows)
+test_data <- trainRaw %>% filter(num_window %in% test_windows)
+
+# Remove metadata columns
+train_data <- train_data[, -c(1:7)]
+test_data <- test_data[, -c(1:7)]
+```
+
+# Exploratory Analysis
+A histogram of the distribution of the dependent variable and a correlation plot of 
+the independent variables are plotted below.
+
+The dependent variable classe is a factor variable with 5 levels. Class A corresponds to
+correct execution of the movement. Classes B-E correspond to incorrect execution. The dependent variables are roughly evenly distributed. The correlations are mostly fairly
+low with a few exceptions.
+
+```{r explore}
+# Histogram
+ggplot(train_data, aes(x=classe)) +
+  geom_bar(fill="orange") +
+  labs(title = "Distribution of Dependent Factor Variable (classe)", x="Classe", y="Count")
+
+corrplot.mixed(cor(train_data %>% select(-classe), use="complete.obs"), lower="shade")
+
+```
+
+# Modelling
+Six models are trained:
+1. Logistic
+2. Naive Bayes
+3. K-nearest neighbours
+4. Random Forest
+5. Support Vetcor Machine
+6. Multilayer Perceptron
+
+Confusion matrices and summaries are compiled for each:
+
+```{r}
+get_results <- function(model, testSet) {
+  predicted <- predict(model, testSet)
+  cm <- confusionMatrix(factor(predicted), factor(testSet$classe))
+  print(cm)
+  cm
+}
+```
+
+Logistic Regression:
+```{r logistic, cache=TRUE, message=FALSE, warning=FALSE, results='hide'}
+train_control <- trainControl(method="cv", number=3)
+logisticModel <- train(classe ~ ., data=train_data, method="multinom", trControl= train_control, trace=FALSE)
+```
+
+```{r logistic-report, cache=TRUE, message=FALSE, warning=FALSE}
+confusionMatrix_LR <- get_results(logisticModel, test_data)
+```
+
+Naive Bayes :
+```{r naive-bayes, cache=TRUE, message=FALSE, warning=FALSE}
+NaiveBayesModel <- naiveBayes(classe ~ ., data=train_data)
+confusionMatrix_NB <- get_results(NaiveBayesModel, test_data)
+```
+
+K-Nearest Neighbours:
+```{r k-nn, cache=TRUE, message=FALSE, warning=FALSE}
+KNNModel <- train(classe ~ ., data=train_data, method="knn", tuneGrid=expand.grid(k=5))
+confusionMatrix_KNN <- get_results(KNNModel, test_data)
+```
+
+Random Forest:
+```{r random-forest, cache=TRUE, message=FALSE, warning=FALSE}
+randomForestModel <- randomForest(classe ~ ., data=train_data)
+confusionMatrix_RF <- get_results(randomForestModel, test_data)
+```
+
+Support Vector Machine:
+```{r support-vector-machine, cache=TRUE, message=FALSE, warning=FALSE}
+SVMModel <- svm(classe ~ ., data=train_data, kernel="radial")
+confusionMatrix_SVM <- get_results(SVMModel, test_data)
+```
+
+Multi-layer Perceptron:
+```{r multi-layer-perceptron, cache=TRUE, message=FALSE, warning=FALSE}
+MLPModel <- train(classe ~ ., data = train_data, method = "nnet", trace = FALSE)
+confusionMatrix_MLP <- get_results(MLPModel, test_data)
+```
+
+# Results
+The accuracy, 95% confidence intervals and expected out of sample errors for each model are tabulated below.
+```{r tabulate-results}
+results <- list(
+  LogisticRegression = confusionMatrix_LR,
+  NaiveBayes = confusionMatrix_NB,
+  KNN = confusionMatrix_KNN,
+  RandomForest = confusionMatrix_RF,
+  SVM = confusionMatrix_SVM,
+  MLP = confusionMatrix_MLP
+)
+
+# out of sample error calculation
+calculate_error <- function(cm) {
+  1 - sum(diag(cm$table)) / sum(cm$table)
+}
+
+summary <- data.frame(
+  Model = names(results),
+  Accuracy = sapply(results, function(cm) cm$overall['Accuracy']),
+  Error = sapply(results, calculate_error),
+  LowerCI = sapply(results, function(cm) cm$overall['AccuracyLower']),
+  UpperCI = sapply(results, function(cm) cm$overall['AccuracyUpper'])
+)
+
+kable(summary, format = "markdown", row.names = FALSE, col.names = c("Model", "Accuracy", "Error", "Lower 95% CI", "Upper 95% CI"))
+
+```
+
+# Analysis
+From the above summary we can see that the random forest has by far the best
+accuracy with the smallest expected out of sample error.
+
+# Predictions
+Finally we calculate predictions for the test set using the random forest model:
+```{r predict ,cache=TRUE, message=FALSE, warning=FALSE}
+predictions <- predict(randomForestModel, testRaw)
+print(predictions)
+```
